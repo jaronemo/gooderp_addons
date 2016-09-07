@@ -7,7 +7,7 @@
     "description": """
     """,
     'version': '8.0.0.1',
-    'depends': ['core', 'base'],
+    'depends': ['core', 'base', 'finance'],
     'data': [
         'data/money_data.xml',
         'security/groups.xml',
@@ -22,10 +22,10 @@
         'report/other_money_statements_view.xml',
         'wizard/other_money_statements_wizard_view.xml',
         'security/ir.model.access.csv',
-        'view/go_live_order_view.xml',
         'view/partner_view.xml',
-        ],
+        'generate_accounting.xml'
+    ],
     'demo': [
         'money_demo.xml',
-            ],
+    ],
 }

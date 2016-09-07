@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <openerp>
-    <data>
+    <data noupdate="1">
         <!-- 收入类型：销售 -->
         <record id="core_category_sale" model="core.category">
             <field name="name">销售</field>
             <field name="type">income</field>
+            <field name="account_id" ref="finance.account_income"/>
         </record>
+
         <!-- 支出类型：采购 -->
         <record id="core_category_purchase" model="core.category">
             <field name="name">采购</field>
             <field name="type">expense</field>
+             <field name="account_id" ref="finance.small_business_chart1401"/>
         </record>
+        
     </data>
 </openerp>

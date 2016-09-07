@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from openerp.tests.common import TransactionCase
 from psycopg2 import IntegrityError
+from openerp.exceptions import except_orm
 
 
 class test_core(TransactionCase):
@@ -14,3 +15,20 @@ class test_core(TransactionCase):
     def test_res_currency(self):
         """测试阿拉伯数字转换称中文大写数字的方法"""
         self.env['res.currency'].rmb_upper(10000100.3)
+        # 测试输入value为负时的货币大写问题
+        self.assertTrue(self.env['res.currency'].rmb_upper(-10000100.3) == u'负壹仟万零壹佰元叁角整')
+        
+class test_res_users(TransactionCase):
+    
+    def test_write(self):
+        '''修改管理员权限'''
+        user_demo = self.env.ref('base.user_demo')
+        user_demo.groups_id = [(4, self.env.ref('base.group_erp_manager').id)]
+        user_admin = self.env.ref('base.user_root')
+        env2 = self.env(self.env.cr, user_demo.id, self.env.context)
+        with self.assertRaises(except_orm):
+            user_admin.with_env(env2).name = 'adsf'
+        # with self.assertRaises(except_orm):
+        user_admin.groups_id = [(3, self.env.ref('base.group_erp_manager').id)]
+
+

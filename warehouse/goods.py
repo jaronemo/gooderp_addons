@@ -9,14 +9,6 @@ from openerp import models, fields, api
 class goods(models.Model):
     _inherit = 'goods'
 
-    @api.model
-    def _get_default_wh(self):
-        return self.env.ref('core.warehouse_general')
-
-    default_wh = fields.Many2one('warehouse', u'默认库位',
-                                 required=True, ondelete='restrict',
-                                 default=_get_default_wh)
-
     # 使用SQL来取得指定产品情况下的库存数量
     def get_stock_qty(self):
         for goods in self:
@@ -55,7 +47,7 @@ class goods(models.Model):
 
                 domain.append(('id', 'not in', ignore))
 
-            move = self.env['wh.move.line'].search(domain, limit=1, order='date desc, id desc')
+            move = self.env['wh.move.line'].search(domain, limit=1, order='cost_time desc, id desc')
             if move:
                 return move.cost_unit
 
@@ -81,6 +73,8 @@ class goods(models.Model):
         return cost_unit * qty, cost_unit
 
     def is_using_matching(self):
+        if self.no_stock:
+            return False
         return True
 
     def is_using_batch(self):
@@ -123,7 +117,7 @@ class goods(models.Model):
                 domain.append(('attribute_id', '=', attribute.id))
 
             # TODO @zzx需要在大量数据的情况下评估一下速度
-            lines = self.env['wh.move.line'].search(domain, order='date, id')
+            lines = self.env['wh.move.line'].search(domain, order='cost_time, id')
 
             qty_to_go, uos_qty_to_go, cost = qty, uos_qty, 0
             for line in lines:

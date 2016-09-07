@@ -5,14 +5,13 @@ from openerp.exceptions import except_orm
 class test_report(TransactionCase):
     def test_bank_report(self):
         ''' 测试银行对账单报表 '''
-        # 生成name='期初余额'记录
-        self.env['go.live.order'].create({'bank_id': self.env.ref('core.comm').id, 'balance':2000.0})
         # 生成收款单记录
         self.env.ref('money.get_40000').money_order_done()
         # 生成其他收支单记录
         last_balance = self.env.ref('core.comm').balance
         self.env.ref('money.other_get_60').other_money_done()
-        self.assertEqual(self.env.ref('core.comm').balance, last_balance + 60.0)
+        # tax_rate = self.env.ref('base.main_company').import_tax_rates
+        self.assertAlmostEqual(self.env.ref('core.comm').balance, last_balance + 60.0)
         # 生成转账单记录
         self.env.ref('money.transfer_300').money_transfer_done()
         # 执行向导

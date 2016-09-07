@@ -22,6 +22,7 @@ class buy_payment_wizard(models.TransientModel):
     s_category_id = fields.Many2one('core.category', u'供应商类别')
     partner_id = fields.Many2one('partner', u'供应商')
     order_id = fields.Many2one('buy.receipt', u'采购单号')
+    warehouse_dest_id = fields.Many2one('warehouse', u'仓库')
 
     @api.multi
     def button_ok(self):
@@ -40,6 +41,8 @@ class buy_payment_wizard(models.TransientModel):
             cond.append(('partner_id', '=', self.partner_id.id))
         if self.order_id:
             cond.append(('name', '=', self.order_id.id))
+        if self.warehouse_dest_id:
+            cond.append(('order_id.warehouse_dest_id', '=', self.warehouse_dest_id.id))
         receipt_obj = self.env['buy.receipt']
         count = sum_payment_rate = 0    # 行数及所有行的付款率之和
         for receipt in receipt_obj.search(cond, order='partner_id,date'):
@@ -53,7 +56,6 @@ class buy_payment_wizard(models.TransientModel):
                 for source in order.source_ids:
                     if source.name.name == receipt.name:
                         payment += source.this_reconcile
-                        balance = source.to_reconcile
             # 如果是退货则金额均取反
             if not receipt.is_return:
                 order_type = u'普通采购'
@@ -72,12 +74,13 @@ class buy_payment_wizard(models.TransientModel):
                 'partner_id': receipt.partner_id.id,
                 'type': order_type,
                 'date': receipt.date,
+                'warehouse_dest_id': receipt.warehouse_dest_id.id,
                 'order_name': receipt.name,
                 'purchase_amount': purchase_amount,
                 'discount_amount': discount_amount,
                 'amount': amount,
                 'payment': payment,
-                'balance': balance,
+                'balance': amount - payment,
                 'payment_rate': payment_rate,
                 'note': receipt.note,
             })

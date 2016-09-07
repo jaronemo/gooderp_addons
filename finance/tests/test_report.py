@@ -4,7 +4,7 @@ from openerp.exceptions import except_orm
 
 
 class test_report(TransactionCase):
-    
+
     def setUp(self):
         super(test_report, self).setUp()
         # 审核2015年12月和2016年1月的会计凭证
@@ -14,6 +14,9 @@ class test_report(TransactionCase):
         self.env.ref('finance.voucher_12_1').voucher_done()
         
         self.period_id = self.env.ref('finance.period_201601').id
+        self.period_201411 = self.env.ref('finance.period_201411')
+        self.period_201512 = self.env.ref('finance.period_201512')
+
         ''' FIXME
         # 结转2015年12月的期间
         month_end = self.env['checkout.wizard'].create(
@@ -21,13 +24,15 @@ class test_report(TransactionCase):
                         'period_id':self.env.ref('finance.period_201512').id})
         month_end.button_checkout()
         '''
-
+        
     def test_trail_balance(self):
         ''' 测试科目余额表 '''
         #上一期间未结账报错
         report = self.env['create.trial.balance.wizard'].create(
             {'period_id': self.period_id}
                     )
+        period_201411_wizard = self.env['create.trial.balance.wizard'].create(
+            {'period_id': self.period_201411.id})
         with self.assertRaises(except_orm):
             report.create_trial_balance()
         # 结转2015年12月的期间
@@ -37,13 +42,16 @@ class test_report(TransactionCase):
         month_end.button_checkout()
         #正常流程
         report.create_trial_balance()
+        period_201411_wizard.create_trial_balance()
 
     def test_vouchers_summary(self):
         ''' 测试总账和明细账'''
         report = self.env['create.vouchers.summary.wizard'].create(
             {'period_begin_id': self.period_id,
              'period_end_id': self.period_id,
-             'subject_name_id': self.env.ref('finance.account_fund').id}
+             'subject_name_id': self.env.ref('finance.account_fund').id,
+             'subject_name_end_id': self.env.ref('finance.account_fund').id,
+             }
                     )
         #会计期间相同时报错
         report.period_end_id = self.env.ref('finance.period_201512')
@@ -76,8 +84,57 @@ class test_report(TransactionCase):
         report.create_vouchers_summary()
         report.create_general_ledger_account()
 
+    def test_get_initial_balance(self):
+        '''取得期初余额'''
+        wizard = self.env['create.vouchers.summary.wizard'].create(
+            {'period_begin_id': self.period_201411.id,
+             'period_end_id': self.period_201411.id,
+             'subject_name_id': self.env.ref('finance.account_fund').id,
+             'subject_name_end_id': self.env.ref('finance.account_fund').id,
+             }
+        )
+        wizard.get_initial_balance(False, self.period_201411, wizard.subject_name_id.id)
+
+    def test_get_current_occurrence_amount(self):
+        '''测试 本期的科目的 voucher_line的明细记录'''
+        wizard = self.env['create.vouchers.summary.wizard'].create(
+            {'period_begin_id': self.period_201512.id,
+             'period_end_id': self.period_201512.id,
+             'subject_name_id': self.env.ref('finance.account_cash').id,
+             'subject_name_end_id': self.env.ref('finance.account_bank').id,
+             })
+        wizard.get_current_occurrence_amount(self.period_201512, self.env.ref('finance.account_bank'))
+
+
+    def test_view_detail_voucher(self):
+        '''在明细账上查看凭证明细按钮'''
+        report = self.env['create.vouchers.summary.wizard'].create(
+            {'period_begin_id': self.period_id,
+             'period_end_id': self.period_id,
+             'subject_name_id': self.env.ref('finance.account_fund').id,
+             'subject_name_end_id': self.env.ref('finance.account_fund').id,
+             })
+        # 结转2015年12月的期间
+        month_end = self.env['checkout.wizard'].create(
+                       {'date':'2015-12-31'})
+        month_end.onchange_period_id()
+        month_end.button_checkout()
+        result = report.create_vouchers_summary()
+        ids = result['domain'][0][2]
+        for line in self.env['vouchers.summary'].browse(ids):
+            if line.voucher_id:
+                line.view_detail_voucher()
+
     def test_get_year_balance(self):
         '''根据期间和科目名称 计算出本期合计 和本年累计 (已经关闭的期间)'''
+        wizard = self.env['create.vouchers.summary.wizard'].create(
+            {'period_begin_id': self.period_201411.id,
+             'period_end_id': self.period_201411.id,
+             'subject_name_id': self.env.ref('finance.account_fund').id,
+             'subject_name_end_id': self.env.ref('finance.account_fund').id,
+             }
+        )
+        wizard.get_year_balance(self.period_201411, wizard.subject_name_id)
         voucher = self.env['checkout.wizard'].create({
                   'date':'2015-12-31'})
         voucher.onchange_period_id()
@@ -86,6 +143,7 @@ class test_report(TransactionCase):
                         'period_begin_id':self.env.ref('finance.period_201512').id,
                         'period_end_id':self.env.ref('finance.period_201601').id,
                         'subject_name_id':self.env.ref('finance.account_income').id,
+                        'subject_name_end_id':self.env.ref('finance.account_income').id,
                                                                           })
         trial_wizard.create_vouchers_summary()
 
@@ -164,7 +222,37 @@ class test_checkout_wizard(TransactionCase):
         wizard.date='2014-12-28'
         wizard.onchange_period_id()
         wizard.button_checkout()
+        #反结账时下一期间已关闭
+        next_period = self.env['create.trial.balance.wizard'].compute_next_period_id(wizard.period_id)
+        next_period.is_closed = True
+        with self.assertRaises(except_orm):
+            wizard.button_counter_checkout()
+        next_period.is_closed = False
         #重复反结账
         wizard.button_counter_checkout()
         with self.assertRaises(except_orm):
             wizard.button_counter_checkout()
+        #公司科目未配置报错
+        company_pro = self.env.ref('base.main_company')
+        company_pro.profit_account = False
+        with self.assertRaises(except_orm):
+            wizard.button_checkout()
+        company_pro.profit_account = self.env.ref('finance.account_profit')
+        company_pro.remain_account = False
+        with self.assertRaises(except_orm):
+            wizard.button_checkout()
+
+    def test_recreate_voucher_name(self):
+        '''按用户设置重排结账会计期间凭证号（会计要求凭证号必须连续）'''
+        # FIXME: 没有成功
+        auto_reset = self.env['ir.values'].set_default('finance.config.settings', 'default_auto_reset', True)
+        # self.env['finance.config.settings'].set_default_auto_reset(True)
+        print self.env['finance.config.settings'].default_auto_reset
+        # 结转2015年12月的期间
+        wizard = self.env['checkout.wizard'].create(
+                       {'date':'2015-12-31'})
+        self.voucher_15_12.voucher_done()
+        self.checkout_voucher.voucher_done()
+        wizard.button_checkout()
+
+    

@@ -10,14 +10,14 @@
                 	<field name="period_id"/>
                     <field name="subject_code"/>
                     <field name="subject_name_id"/>
-                    <field name="initial_balance_debit" sum="合计"  merge="False" child_name='借方'/>
+                    <field name="initial_balance_debit" sum="合计" base_string='期初余额' merge="False" child_name='借方' colspan='2'/>
                     <field name="initial_balance_credit" sum="合计"  merge="True" child_name='贷方'/>
-                    <field name="current_occurrence_debit" sum="合计"  merge="False" child_name='借方'/>
+                    <field name="current_occurrence_debit" sum="合计" base_string='本期发生额' merge="False" child_name='借方' colspan='2'/>
                     <field name="current_occurrence_credit" sum="合计" merge="True" child_name='贷方'/>
-                    <field name="cumulative_occurrence_debit" sum="合计"  merge="False" child_name='借方'/>
-                    <field name="cumulative_occurrence_credit" sum="合计" merge="True" child_name='贷方'/>
-                    <field name="ending_balance_debit" sum="合计"  merge="False" child_name='借方'/>
+                    <field name="ending_balance_debit" sum="合计"    base_string='期末余额' merge="False" child_name='借方' colspan='2'/>
                     <field name="ending_balance_credit" sum="合计" merge="True" child_name='贷方'/>
+                    <field name="cumulative_occurrence_debit" sum="合计"    base_string='本年累计' merge="False" child_name='借方' colspan='2'/>
+                    <field name="cumulative_occurrence_credit" sum="合计" merge="True" child_name='贷方'/>
           		</tree>
             </field>
         </record>
@@ -50,7 +50,7 @@
             	<form>
             		<group>
                         <group>
-                            <field name="period_id" options="{'no_open':True,'no_create':True}"/>
+                            <field name="period_id" options="{'no_open':True,'no_create':True}" required="True" style="width: 30%%"/>
                         </group>
                     </group>
 
@@ -79,10 +79,10 @@
                         <group>
                             <field name="period_begin_id" options="{'no_open':True,'no_create':True}" required="True"/>
                             <field name="subject_name_id" options="{'no_open':True,'no_create':True}" required="True"/>
-                            
                         </group>
                          <group>
                             <field name="period_end_id" options="{'no_open':True,'no_create':True}" required="True"/>
+                            <field name="subject_name_end_id" options="{'no_open':True,'no_create':True}" required="True"/>
                          </group>
                     </group>
 
@@ -108,9 +108,10 @@
             <field name="arch" type="xml">
                 <tree string="科目明细帐" create="false" edit='false'>
                     <field name="date"/>
-                    <field name="subject_name_id"/>
                     <field name="period_id"/>
                     <field name="voucher_id"/>
+                    <button name="view_detail_voucher" type="object" string="查看明细" icon="terp-stock_zoom"
+                    	 attrs="{'invisible': [('voucher_id','=',False)]}"/>
                     <field name="summary"/>
                     <field name="debit"/>
                     <field name="credit" />
@@ -141,7 +142,6 @@
             <field name="model">general.ledger.account</field>
             <field name="arch" type="xml">
                 <tree string="科目总账" create="false" edit='false'>
-                    <field name="subject_name_id"/>
                     <field name="period_id"/>
                     <field name="summary"/>
                     <field name="debit"/>
@@ -161,6 +161,6 @@
         </record>
      <menuitem id='create_general_ledger_account_menu' action='create_ledger_account_action' parent='voucher_books_menu' sequence='60' name="科目总账"/>
      <menuitem id='create_vouchers_summary_menu' action='create_vouchers_summary_wizard_action' parent='voucher_books_menu' sequence='50' name="科目明细账"/>
-	 <menuitem id='create_trial_balance_menu' action='create_trial_balance_wizard_action' parent='voucher_books_menu' sequence='30'/>
+	 <menuitem id='create_trial_balance_menu' action='create_trial_balance_wizard_action' parent='voucher_books_menu' sequence='22'/>
     </data>
 </openerp>

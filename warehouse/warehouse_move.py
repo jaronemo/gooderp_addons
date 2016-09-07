@@ -11,18 +11,201 @@ class wh_move(models.Model):
         ('draft', u'草稿'),
         ('done', u'已审核'),
     ]
+    
+    @api.one
+    @api.depends('line_out_ids','line_in_ids')
+    def _compute_total_qty(self):
+        goods_total = 0
+        if self.line_in_ids:
+            # 入库产品总数
+            goods_total = sum(line.goods_qty for line in self.line_in_ids)
+        elif self.line_out_ids:
+            # 出库产品总数
+            goods_total = sum(line.goods_qty for line in self.line_out_ids)
+        self.total_qty = goods_total
+
+    @api.model
+    def _get_default_warehouse(self):
+        '''获取调出仓库'''
+        if self.env.context.get('warehouse_type', 'stock'):
+            return self.env['warehouse'].get_warehouse_by_type(
+                    self.env.context.get('warehouse_type', 'stock'))
+
+    @api.model
+    def _get_default_warehouse_dest(self):
+        '''获取调入仓库'''
+        if self.env.context.get('warehouse_dest_type', 'stock'):
+            return self.env['warehouse'].get_warehouse_by_type(
+                    self.env.context.get('warehouse_dest_type', 'stock'))
 
     origin = fields.Char(u'源单类型', required=True)
     name = fields.Char(u'单据编号', copy=False, default='/')
     state = fields.Selection(MOVE_STATE, u'状态', copy=False, default='draft')
     partner_id = fields.Many2one('partner', u'业务伙伴', ondelete='restrict')
-    date = fields.Date(u'单据日期', copy=False, default=fields.Date.context_today)
+    date = fields.Date(u'单据日期', required=True, copy=False, default=fields.Date.context_today)
+    warehouse_id = fields.Many2one('warehouse', u'调出仓库',
+                                   ondelete='restrict',
+                                   required=True,
+                                   default=_get_default_warehouse)
+    warehouse_dest_id = fields.Many2one('warehouse', u'调入仓库',
+                                        ondelete='restrict',
+                                        required=True,
+                                        default=_get_default_warehouse_dest)
     approve_uid = fields.Many2one('res.users', u'审核人',
                                   copy=False, ondelete='restrict')
     approve_date = fields.Datetime(u'审核日期', copy=False)
-    line_out_ids = fields.One2many('wh.move.line', 'move_id', u'明细', domain=[('type', '=', 'out')], context={'type': 'out'}, copy=True)
-    line_in_ids = fields.One2many('wh.move.line', 'move_id', u'明细', domain=[('type', '=', 'in')], context={'type': 'in'}, copy=True)
+    line_out_ids = fields.One2many('wh.move.line', 'move_id', u'出库明细',
+                                   domain=[('type', '=', 'out')],
+                                   context={'type': 'out'}, copy=True)
+    line_in_ids = fields.One2many('wh.move.line', 'move_id', u'入库明细',
+                                  domain=[('type', '=', 'in')],
+                                  context={'type': 'in'}, copy=True)
     note = fields.Text(u'备注')
+    total_qty = fields.Integer(u'产品总数', compute=_compute_total_qty, store=True)
+
+    @api.model
+    def scan_barcode(self,model_name,barcode,order_id):
+        val = {}
+        create_line = False # 是否需要创建明细行
+        att = self.env['attribute'].search([('ean','=',barcode)])
+        goods = self.env['goods'].search([('barcode', '=', barcode)])
+
+        if not att and not goods:
+            raise osv.except_osv(u'错误', u'ean为  %s 的产品不存在' % (barcode))
+        else:
+            conversion = att and att.goods_id.conversion or goods.conversion
+            if model_name in ['wh.out','wh.in']:
+                move = self.env[model_name].browse(order_id).move_id
+            # 在其他出库单上扫描条码
+            if model_name == 'wh.out':
+                val['type'] = 'out'
+                for line in move.line_out_ids:
+                    line.cost_unit = line.goods_id.price
+                    # 如果产品属性上存在条码，且明细行上已经存在该产品，则数量累加
+                    if att and line.attribute_id.id == att.id:
+                        line.goods_qty += 1
+                        line.goods_uos_qty = line.goods_qty / conversion
+                        create_line = True
+                    # 如果产品上存在条码，且明细行上已经存在该产品，则数量累加
+                    elif goods and line.goods_id.id == goods.id:
+                        line.goods_qty += 1
+                        line.goods_uos_qty = line.goods_qty / conversion
+                        create_line = True
+            # 在其他入库单上扫描条码
+            if model_name == 'wh.in':
+                val['type'] = 'in'
+                for line in move.line_in_ids:
+                    line.cost_unit = line.goods_id.cost
+                    # 如果产品属性上存在条码
+                    if att and line.attribute_id.id == att.id:
+                        line.goods_qty += 1
+                        line.goods_uos_qty = line.goods_qty / conversion
+                        create_line = True
+                    # 如果产品上存在条码
+                    elif goods and line.goods_id.id == goods.id:
+                        line.goods_qty += 1
+                        line.goods_uos_qty = line.goods_qty / conversion
+                        create_line = True
+            #销售出入库单的二维码
+            if model_name == 'sell.delivery':
+                move = self.env[model_name].browse(order_id).sell_move_id
+                if self.env[model_name].browse(order_id).is_return == True:
+                    val['type'] = 'in'
+                    for line in move.line_in_ids:
+                        line.price_taxed = line.goods_id.cost
+                        # 如果产品属性上存在条码
+                        if att and line.attribute_id.id == att.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+                        # 如果产品上存在条码
+                        elif goods and line.goods_id.id == goods.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+                else:
+                    val['type'] = 'out'
+                    for line in move.line_out_ids:
+                        line.price_taxed = line.goods_id.price
+                        # 如果产品属性上存在条码
+                        if att and line.attribute_id.id == att.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+                        # 如果产品上存在条码
+                        elif goods and line.goods_id.id == goods.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+            #采购出入库单的二维码
+            if model_name == 'buy.receipt':
+                move = self.env[model_name].browse(order_id).buy_move_id
+                if self.env[model_name].browse(order_id).is_return == True:
+                    val['type'] = 'out'
+                    for line in move.line_out_ids:
+                        line.price_taxed = line.goods_id.price
+                        # 如果产品属性上存在条码
+                        if att and line.attribute_id.id == att.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+                        # 如果产品上存在条码
+                        elif goods and line.goods_id.id == goods.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+                else:
+                    val['type'] = 'in'
+                    for line in move.line_in_ids:
+                        line.price_taxed = line.goods_id.cost
+                        # 如果产品属性上存在条码
+                        if att and line.attribute_id.id == att.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+                        # 如果产品上存在条码
+                        elif goods and line.goods_id.id == goods.id:
+                            line.goods_qty += 1
+                            line.goods_uos_qty = line.goods_qty / conversion
+                            create_line = True
+            if att:
+                goods_id = att.goods_id.id
+                uos_id = att.goods_id.uos_id.id
+                uom_id = att.goods_id.uom_id.id
+                attribute_id = att.id
+                conversion = att.goods_id.conversion
+                if val['type'] == 'in':
+                    # 入库操作取产品的成本
+                    price = cost_unit = att.goods_id.cost
+                elif val['type'] == 'out':
+                    # 出库操作取产品的零售价
+                    price = cost_unit = att.goods_id.price
+            elif goods:
+                goods_id = goods.id
+                uos_id = goods.uos_id.id
+                uom_id = goods.uom_id.id
+                attribute_id = False
+                conversion = goods.conversion
+                if val['type'] == 'in':
+                    # 入库操作取产品的成本
+                    price = cost_unit = goods.cost
+                elif val['type'] == 'out':
+                    # 出库操作取产品的零售价
+                    price = cost_unit = goods.price
+            val.update({
+              'goods_id': goods_id,
+              'attribute_id': attribute_id,
+              'warehouse_id': move.warehouse_id.id,
+              'warehouse_dest_id': move.warehouse_dest_id.id,
+              'goods_uos_qty': 1.0 / conversion,
+              'uos_id': uos_id,
+              'goods_qty': 1,
+              'uom_id': uom_id,
+              'price_taxed': price,
+              'cost_unit': cost_unit,
+              'move_id': move.id})
+            if create_line == False:
+                self.env['wh.move.line'].create(val)
 
     @api.multi
     def unlink(self):

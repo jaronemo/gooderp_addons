@@ -29,3 +29,39 @@ class test_goods(TransactionCase):
         self.env.ref('goods.keyboard').unlink()
         with self.assertRaises(ValueError):
             self.env.ref('goods.attribute_value_white')
+
+    def test_name_search(self):
+        '''测试goods的按名字和编号搜索'''
+        mouse = self.env.ref('goods.mouse')
+        # 使用name来搜索键盘
+        result = self.env['goods'].name_search('鼠标')
+        real_result = [(mouse.id,
+                        mouse.code + '_' + mouse.name)]
+
+        self.assertEqual(result, real_result)
+
+        # 使用code来搜索键盘
+        result = self.env['goods'].name_search('001')
+        self.assertEqual(result, real_result)
+
+    def test_create(self):
+        '''导入产品时，如果辅助单位为空，则用计量单位来填充它'''
+        goods = self.env['goods'].create({
+            'name': u'显示器',
+            'category_id': self.env.ref('core.goods_category_1').id,
+            'uom_id': self.env.ref('core.uom_pc').id,
+            'conversion': 1,
+            'cost': 1000,
+            })
+        self.assertTrue(goods.uos_id.id == self.env.ref('core.uom_pc').id)
+
+class test_attributes(TransactionCase):
+
+    def test_ean_search(self):
+        '''测试goods的按ean搜索'''
+        iphone_value_white = self.env.ref('goods.iphone_value_white')
+        result = self.env['attribute'].name_search('12345678987')
+        real_result = [(iphone_value_white.id,
+                        iphone_value_white.category_id.name + ':' +iphone_value_white.value_id.name)]
+        self.assertEqual(result, real_result)
+

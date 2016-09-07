@@ -12,9 +12,9 @@
                     <field name='uom' />
                     <field name='uos' groups='goods.auxiliary_unit_groups' />
                     <field name='warehouse' groups='warehouse.multi_warehouse_groups' />
-                    <field name='goods_uos_qty' groups='goods.auxiliary_unit_groups' />
-                    <field name='goods_qty' />
-                    <field name='cost' />
+                    <field name='goods_uos_qty' groups='goods.auxiliary_unit_groups' sum='辅助数量合计' />
+                    <field name='goods_qty' sum='数量合计' />
+                    <field name='cost' sum='成本合计' />
                 </tree>
             </field>
         </record>
@@ -25,11 +25,11 @@
             <field name='arch' type='xml'>
                 <graph type='pivot'>
                     <field name='goods' type='row' />
-                    <field name='lot' type='row' groups='goods.batch_groups' />
+                    <field name='attribute_id' type='col' groups='goods.multi_attrs_groups' />
                     <field name='warehouse' type='col' groups='warehouse.multi_warehouse_groups' />
                     <field name='goods_qty' type='measure' />
                     <field name='goods_uos_qty' type='measure' groups='goods.auxiliary_unit_groups' />
-                    <field name='cost' type='measure' />
+                    <field name='cost' type='measure' groups='goods.view_cost_groups'/>
                 </graph>
             </field>
         </record>

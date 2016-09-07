@@ -23,7 +23,7 @@ class wh_inventory(models.Model):
 
     date = fields.Date(u'日期', default=fields.Date.context_today)
     name = fields.Char(u'名称', copy=False, default='/')
-    warehouse_id = fields.Many2one('warehouse', u'仓库')
+    warehouse_id = fields.Many2one('warehouse', u'仓库', required=True)
     goods = fields.Char(u'产品')
     uos_not_zero = fields.Boolean(u'辅助数量不为0')
     out_id = fields.Many2one('wh.out', u'盘亏单据', copy=False)
@@ -73,7 +73,11 @@ class wh_inventory(models.Model):
               (not inventory.in_id or inventory.in_id.state == 'done'):
                 self.state = 'done'
                 return True
-
+            if inventory.state == 'done' and \
+              (not inventory.out_id or inventory.out_id.state != 'done') and \
+              (not inventory.in_id or inventory.in_id.state != 'done'):
+                self.state = 'confirmed'
+                return True
         return False
 
     @api.multi
@@ -100,8 +104,11 @@ class wh_inventory(models.Model):
         self.line_ids.unlink()
 
     def create_losses_out(self, inventory, out_line):
+        inventory_warehouse = self.env.ref('warehouse.warehouse_inventory')
         out_vals = {
-            'type': 'losses',
+            'warehouse_dest_id': inventory_warehouse.id,
+            'warehouse_id': inventory.warehouse_id.id,
+            'type': 'inventory',
             'line_out_ids': [],
         }
 
@@ -113,8 +120,11 @@ class wh_inventory(models.Model):
         inventory.out_id = out_id
 
     def create_overage_in(self, inventory, in_line):
+        inventory_warehouse = self.env.ref('warehouse.warehouse_inventory')
         in_vals = {
-            'type': 'overage',
+            'warehouse_dest_id': inventory.warehouse_id.id,
+            'warehouse_id': inventory_warehouse.id,
+            'type': 'inventory',
             'line_in_ids': [],
         }
 
@@ -129,23 +139,26 @@ class wh_inventory(models.Model):
     def generate_inventory(self):
         for inventory in self:
             out_line, in_line = [], []
-            for line in inventory.line_ids.filtered(
-              lambda line: line.difference_qty or line.difference_uos_qty):
-                if line.difference_qty <= 0 and line.difference_uos_qty <= 0:
-                    out_line.append(line)
-                elif line.difference_qty >= 0 and line.difference_uos_qty >= 0:
-                    in_line.append(line)
-                else:
+            for line in inventory.line_ids:
+                if (line.difference_qty > 0 and line.difference_uos_qty < 0) or \
+                (line.difference_qty < 0 and line.difference_uos_qty > 0):
                     raise osv.except_osv(
                         u'错误',
                         u'产品"%s"行上盘盈盘亏数量与辅助单位的盘盈盘亏数量盈亏\
                         方向不一致' % line.goods_id.name)
+                if line.difference_qty < 0 or line.difference_uos_qty < 0:
+                    out_line.append(line)
+                elif line.difference_qty > 0 or line.difference_uos_qty > 0:
+                    in_line.append(line)
 
             if out_line:
                 self.create_losses_out(inventory, out_line)
 
             if in_line:
                 self.create_overage_in(inventory, in_line)
+
+            if  len(out_line) + len(in_line) == 0:
+                inventory.state = 'done'
 
             if out_line or in_line:
                 inventory.state = 'confirmed'
@@ -201,7 +214,6 @@ class wh_inventory(models.Model):
         for inventory in self:
             inventory.delete_line()
             line_ids = inventory.get_line_detail(inventory.uos_not_zero)
-
             for line in line_ids:
                 line_obj.create({
                         'inventory_id': inventory.id,
@@ -233,8 +245,8 @@ class wh_inventory_line(models.Model):
     ]
 
     inventory_id = fields.Many2one('wh.inventory', u'盘点', ondelete='cascade')
-    warehouse_id = fields.Many2one('warehouse', u'仓库', ondelete='restrict')
-    goods_id = fields.Many2one('goods', u'产品', ondelete='restrict')
+    warehouse_id = fields.Many2one('warehouse', u'仓库', required=True, ondelete='restrict')
+    goods_id = fields.Many2one('goods', u'产品', required=True, ondelete='restrict')
     attribute_id = fields.Many2one('attribute', u'属性', ondelete='restrict')
     using_batch = fields.Boolean(
         related='goods_id.using_batch', string=u'批号管理')
@@ -248,17 +260,17 @@ class wh_inventory_line(models.Model):
     uom_id = fields.Many2one('uom', u'单位', ondelete='restrict')
     uos_id = fields.Many2one('uom', u'辅助单位', ondelete='restrict')
     real_qty = fields.Float(
-        u'系统库存', digits_compute=dp.get_precision('Quantity'))
+        u'系统库存', digits=dp.get_precision('Quantity'))
     real_uos_qty = fields.Float(
-        u'系统辅助单位库存', digits_compute=dp.get_precision('Quantity'))
+        u'系统辅助单位库存', digits=dp.get_precision('Quantity'))
     inventory_qty = fields.Float(
-        u'盘点库存', digits_compute=dp.get_precision('Quantity'))
+        u'盘点库存', digits=dp.get_precision('Quantity'))
     inventory_uos_qty = fields.Float(
-        u'盘点辅助单位库存', digits_compute=dp.get_precision('Quantity'))
+        u'盘点辅助单位库存', digits=dp.get_precision('Quantity'))
     difference_qty = fields.Float(
-        u'盘盈盘亏', digits_compute=dp.get_precision('Quantity'))
+        u'盘盈盘亏', digits=dp.get_precision('Quantity'))
     difference_uos_qty = fields.Float(
-        u'辅助单位盘盈盘亏', digits_compute=dp.get_precision('Quantity'))
+        u'辅助单位盘盈盘亏', digits=dp.get_precision('Quantity'))
 
     def check_difference_identical(self):
         if self.difference_qty * self.difference_uos_qty < 0:
@@ -327,12 +339,6 @@ class wh_inventory_line(models.Model):
                     attribute=inventory.attribute_id)
 
             return {
-                'warehouse_id':
-                    wh_type == 'out' and inventory.warehouse_id.id or
-                    inventory_warehouse.id,
-                'warehouse_dest_id':
-                    wh_type == 'in' and inventory.warehouse_id.id or
-                    inventory_warehouse.id,
                 'lot': inventory.new_lot,
                 'lot_id': inventory.new_lot_id.id,
                 'goods_id': inventory.goods_id.id,
@@ -358,6 +364,13 @@ class wh_out(models.Model):
             order.inventory_ids.check_done()
 
         return res
+    @api.multi
+    def cancel_approved_order(self):
+        res = super(wh_out, self).cancel_approved_order()
+        for order in self:
+            order.inventory_ids.check_done()
+
+        return res
 
 
 class wh_in(models.Model):
@@ -368,6 +381,13 @@ class wh_in(models.Model):
     @api.multi
     def approve_order(self):
         res = super(wh_in, self).approve_order()
+        for order in self:
+            order.inventory_ids.check_done()
+
+        return res
+    @api.multi
+    def cancel_approved_order(self):
+        res = super(wh_in, self).cancel_approved_order()
         for order in self:
             order.inventory_ids.check_done()
 

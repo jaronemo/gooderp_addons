@@ -149,8 +149,35 @@
         </record>
 		<!--公司添加利润科目-->
         <record id="base.main_company" model="res.company">
-            <field name="profit_account" ref='finance.account_profit'/>
-            <field name="remain_account" ref='finance.account_remain'/>
+            <field name="import_tax_rate">17</field>
+            <field name="output_tax_rate">17</field>
+        </record>
+
+
+        <record id="core.customer_category_1" model="core.category">
+            <field name="account_id" ref="finance.account_ar"/>
+        </record>
+        <record id="core.customer_category_2" model="core.category">
+           <field name="account_id" ref="finance.account_ar"/>
+        </record>
+         <record id="core.customer_category_vip" model="core.category">
+           <field name="account_id" ref="finance.account_ar"/>
+        </record>
+
+        <record id="core.supplier_category_1" model="core.category">
+          <field name="account_id" ref="finance.account_ap"/>
+        </record>
+        <record id="core.cat_freight" model="core.category">
+           <field name="account_id" ref="finance.bs_8"/>
+        </record>
+        <record id="core.cat_consult" model="core.category">
+           <field name="account_id" ref="finance.bs_9"/>
+        </record>
+        <record id="core.alipay" model="bank.account">
+             <field name="account_id" ref="finance.account_bank"/>
+        </record>
+        <record id="core.comm" model="bank.account">
+           <field name="account_id" ref="finance.account_bank"/>
         </record>
     </data>
 </openerp>

@@ -37,11 +37,17 @@ class test_voucher(TransactionCase):
         with self.assertRaises(except_orm):
             voucher.voucher_draft()
 
+    def test_line_unlink(self):
+        '''测试可正常删除未审核的凭证行'''
+        voucher = self.env.ref('finance.voucher_1')
+        for line in voucher.line_ids:
+            line.unlink()
+
     def test_compute(self):
         '''新建凭证时计算字段加载'''
         voucher = self.env.ref('finance.voucher_1')
         self.assertTrue(voucher.period_id.name == u'2016年 第1期')
-        self.assertTrue(voucher.amount_text == '50000.0')
+        self.assertTrue(voucher.amount_text == 50000.0)
         voucher.unlink()
     
     def test_check_balance(self):
@@ -101,10 +107,44 @@ class test_period(TransactionCase):
             line.onchange_account_id()
             line.account_id = self.env.ref('finance.account_ap').id
             line.onchange_account_id()
-            line.account_id = self.env.ref('finance.account_wage').id
+            line.account_id = self.env.ref('finance.small_business_chart2211004').id
             line.onchange_account_id()
+            line.account_id = self.env.ref('finance.account_goods').id
+            line.account_id.auxiliary_financing = 'goods'
+            line.onchange_account_id()
+            line.account_id.auxiliary_financing = 'member'
+            line.onchange_account_id()
+
         #这么写覆盖到了，但是这什么逻辑=。=
         self.env['voucher.line'].onchange_account_id()
                                                     
 
-        
+class test_finance_config_wizard (TransactionCase):
+
+    def test_default(self):
+        '''测试finance.config.settings默认值'''
+        voucher_date_setting = self.env['finance.config.settings'].set_default_voucher_date()
+        period_domain_setting = self.env['finance.config.settings'].set_default_period_domain()
+        auto_reset_setting = self.env['finance.config.settings'].set_default_auto_reset()
+        reset_period_setting = self.env['finance.config.settings'].set_default_reset_period()
+        reset_init_number_setting = self.env['finance.config.settings'].set_default_reset_init_number()
+
+
+class test_finance_account(TransactionCase):
+
+    def setUp(self):
+        super(test_finance_account, self).setUp()
+        self.cash = self.env.ref('finance.account_cash')
+
+    def test_name_get(self):
+        name = self.cash.name_get()
+        real_name = '%s %s' % (self.cash.code, self.cash.name)
+        self.assertTrue(name[0][1] == real_name)
+
+    def test_name_search(self):
+        '''会计科目按名字和编号搜索'''
+        result = self.env['finance.account'].name_search('库存现金')
+        real_result = [(self.cash.id,
+                        self.cash.code + ' ' + self.cash.name)]
+
+        self.assertEqual(result, real_result)

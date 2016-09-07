@@ -22,6 +22,7 @@ class sell_order_track_wizard(models.TransientModel):
     partner_id = fields.Many2one('partner', u'客户')
     goods_id = fields.Many2one('goods', u'商品')
     staff_id = fields.Many2one('staff', u'销售员')
+    warehouse_id = fields.Many2one('warehouse', u'仓库')
 
     @api.multi
     def button_ok(self):
@@ -37,6 +38,8 @@ class sell_order_track_wizard(models.TransientModel):
             domain.append(('order_id.partner_id', '=', self.partner_id.id))
         if self.staff_id:
             domain.append(('order_id.staff_id', '=', self.staff_id.id))
+        if self.warehouse_id:
+            domain.append(('order_id.warehouse_id', '=', self.warehouse_id.id))
 
         index = 0
         sum_qty = sum_amount = sum_not_out = 0  # 数量、金额、未出库数量合计
@@ -44,9 +47,14 @@ class sell_order_track_wizard(models.TransientModel):
         line_ids = []
         for line in self.env['sell.order.line'].search(domain, order='goods_id'):
             line_ids.append(line)
-            sum_qty += line.quantity
-            sum_amount += line.subtotal
-            sum_not_out += line.quantity - line.quantity_out
+            if line.order_id.type == 'sell':
+                sum_qty += line.quantity
+                sum_amount += line.subtotal
+                sum_not_out += line.quantity - line.quantity_out
+            else:  # 退货时数量、销售额、未出库数量均取反
+                sum_qty += - line.quantity
+                sum_amount += - line.subtotal
+                sum_not_out += line.quantity_out - line.quantity
 
         for line in self.env['sell.order.line'].search(domain, order='goods_id'):
             index += 1
@@ -60,6 +68,16 @@ class sell_order_track_wizard(models.TransientModel):
                 wh_out_date = wh_move_line[0].date
             else:
                 wh_out_date = wh_move_line.date
+
+            # 以下分别为明细行上数量、销售额、未出库数量
+            qty = line.quantity
+            amount = line.subtotal
+            qty_not_out = line.quantity - line.quantity_out
+            if line.order_id.type == 'return':  # 退货时数量、销售额、未出库数量均取反
+                qty = - qty
+                amount = - amount
+                qty_not_out = - qty_not_out
+
             track = self.env['sell.order.track'].create({
                     'goods_code': line.goods_id.code,
                     'goods_id': line.goods_id.id,
@@ -69,10 +87,11 @@ class sell_order_track_wizard(models.TransientModel):
                     'order_name': line.order_id.name,
                     'staff_id': line.order_id.staff_id.id,
                     'partner_id': line.order_id.partner_id.id,
+                    'warehouse_id': line.order_id.warehouse_id.id,
                     'goods_state': line.order_id.goods_state,
-                    'qty': line.quantity,
-                    'amount': line.subtotal,
-                    'qty_not_out': line.quantity - line.quantity_out,
+                    'qty': qty,
+                    'amount': amount,
+                    'qty_not_out': qty_not_out,
                     'delivery_date': line.order_id.delivery_date,
                     'wh_out_date': wh_out_date,  # 出库日期
                     'note': line.note,
@@ -80,9 +99,9 @@ class sell_order_track_wizard(models.TransientModel):
             res.append(track.id)
 
             if not after_id:  # 如果是最后一个明细行，则在最后增加一个小计行
-                total_qty += line.quantity
-                total_not_out += line.quantity - line.quantity_out
-                total_amount += line.subtotal
+                total_qty += qty
+                total_not_out += qty_not_out
+                total_amount += amount
                 summary_last_track = self.env['sell.order.track'].create({
                     'goods_state': u'小计',
                     'qty': total_qty,
@@ -93,13 +112,13 @@ class sell_order_track_wizard(models.TransientModel):
                 continue
 
             if line.goods_id == after.goods_id:  # 如果下一个是相同商品，则累加数量、销售额和未出库数量
-                total_qty += line.quantity
-                total_not_out += line.quantity - line.quantity_out
-                total_amount += line.subtotal
+                total_qty += qty
+                total_not_out += qty_not_out
+                total_amount += amount
             elif line.goods_id != after.goods_id:  # 如果下一个是不同商品，则增加一个小计行
-                total_qty += line.quantity
-                total_not_out += line.quantity - line.quantity_out
-                total_amount += line.subtotal
+                total_qty += qty
+                total_not_out += qty_not_out
+                total_amount += amount
                 summary_track = self.env['sell.order.track'].create({
                     'goods_state': u'小计',
                     'qty': total_qty,

@@ -20,6 +20,15 @@
                 </tree>
             </field>
         </record>
+        <record id="profit_statement_search" model="ir.ui.view">
+            <field name="name">profit.statement.search</field>
+            <field name="model">profit.statement</field>
+            <field name="arch" type="xml">
+                <search string="利润表">
+                	<field name="balance"/>
+                </search>
+            </field>
+        </record>
         <record id="profit_statement_tree_template" model="ir.ui.view">
             <field name="name">profit_statement_tree_template</field>
             <field name="model">profit.statement</field>
@@ -29,6 +38,15 @@
                     <field name="line_num"/>
                     <field name="occurrence_balance_formula" />
                 </tree>
+            </field>
+        </record>
+        <record id="profit_statement_template_search" model="ir.ui.view">
+            <field name="name">profit.statement.template.search</field>
+            <field name="model">profit.statement</field>
+            <field name="arch" type="xml">
+                <search string="利润表模板">
+                	<field name="balance"/>
+                </search>
             </field>
         </record>
         <record id="profit_statement_action_template" model="ir.actions.act_window">
@@ -57,6 +75,16 @@
                 </tree>
             </field>
         </record>
+        <record id="balance_sheet_template_search" model="ir.ui.view">
+            <field name="name">balance.sheet.template.search</field>
+            <field name="model">balance.sheet</field>
+            <field name="arch" type="xml">
+                <search string="资产负债表模板">
+                	<field name="balance"/>
+                	<field name="balance_two"/>
+                </search>
+            </field>
+        </record>
         <record id="balance_sheet_tree_wizard" model="ir.ui.view">
             <field name="name">balance_sheet_tree</field>
             <field name="model">balance.sheet</field>
@@ -67,10 +95,20 @@
                     <field name="beginning_balance"/>
                     <field name="ending_balance"/>
                     <field name="balance_two" />
-                     <field name="line_num_two"/>
+                    <field name="line_num_two"/>
                     <field name="beginning_balance_two"  />
                     <field name="ending_balance_two"  />
                 </tree>
+            </field>
+        </record>
+        <record id="balance_sheet_search" model="ir.ui.view">
+            <field name="name">balance.sheet.search</field>
+            <field name="model">balance.sheet</field>
+            <field name="arch" type="xml">
+                <search string="资产负债表">
+                	<field name="balance"/>
+                	<field name="balance_two"/>
+                </search>
             </field>
         </record>
         <record id="balance_sheet_action" model="ir.actions.act_window">
@@ -88,11 +126,11 @@
                 <form>
                     <group>
                         <group>
-                            <field name="period_id" options="{'no_open':True,'no_create':True}"/>
+                            <field name="period_id" options="{'no_open':True,'no_create':True}" required="True" style="width: 30%%"/>
                         </group>
                     </group>
 
-                    <button name="create_balance_sheet" invisible="context.get('profit_statement')"  string="科目余额表" type="object" class="oe_highlight"/>
+                    <button name="create_balance_sheet" invisible="context.get('profit_statement')"  string="资产负债表" type="object" class="oe_highlight"/>
                     <button name="create_profit_statement" invisible="context.get('balance_sheet')"  string="利润表" type="object" class="oe_highlight"/>
                     或者 
                     <button string="取消" class="oe_link" special="cancel"/>
@@ -118,7 +156,7 @@
             context="{'profit_statement':True}"
             />
          <menuitem id='profit_statement_tree_wizard_action_menu' action='profit_statement_tree_wizard_action' parent='voucher_books_menu' sequence='30'/>
-        <menuitem id='create_balance_sheet_wizard_menu' action='create_balance_sheet_wizard_action' parent='voucher_books_menu' sequence='20'/>
+        <menuitem id='create_balance_sheet_wizard_menu' action='create_balance_sheet_wizard_action' parent='voucher_books_menu' sequence='25'/>
          <menuitem id='balance_sheet_menu' action='balance_sheet_action' parent='finance_setting_menu' sequence='30'/>
     </data>
 </openerp>

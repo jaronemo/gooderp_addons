@@ -27,8 +27,8 @@ class other_money_order(models.Model):
     _description = u'其他收入/其他支出'
 
     TYPE_SELECTION = [
-        ('other_pay', u'其他收入'),
-        ('other_get', u'其他支出'),
+        ('other_pay', u'其他支出'),
+        ('other_get', u'其他收入'),
     ]
 
     @api.model
@@ -50,10 +50,10 @@ class other_money_order(models.Model):
         return super(other_money_order, self).unlink()
 
     @api.one
-    @api.depends('line_ids.amount')
+    @api.depends('line_ids.amount', 'line_ids.tax_amount')
     def _compute_total_amount(self):
         # 计算应付金额/应收金额
-        self.total_amount = sum(line.amount for line in self.line_ids)
+        self.total_amount = sum((line.amount + line.tax_amount) for line in self.line_ids)
 
     state = fields.Selection([
                           ('draft', u'未审核'),
@@ -69,7 +69,7 @@ class other_money_order(models.Model):
     name = fields.Char(string=u'单据编号', copy=False, readonly=True, default='/')
     total_amount = fields.Float(string=u'金额', compute='_compute_total_amount',
                                 store=True, readonly=True,
-                                digits_compute=dp.get_precision('Amount'))
+                                digits=dp.get_precision('Amount'))
     bank_id = fields.Many2one('bank.account', string=u'结算账户',
                               required=True, ondelete='restrict',
                               readonly=True, states={'draft': [('readonly', False)]})
@@ -79,6 +79,7 @@ class other_money_order(models.Model):
     type = fields.Selection(TYPE_SELECTION, string=u'类型', readonly=True,
                             default=lambda self: self._context.get('type'),
                             states={'draft': [('readonly', False)]})
+    note = fields.Text(u'备注')
 
     @api.onchange('date')
     def onchange_date(self):
@@ -155,13 +156,33 @@ class other_money_order_line(models.Model):
     _name = 'other.money.order.line'
     _description = u'其他收支单明细'
 
+    @api.onchange('service')
+    def onchange_service(self):
+        # 当选择了服务后，则自动填充上类别和金额
+        if self.env.context.get('type') == 'other_get':
+            self.category_id = self.service.get_categ_id.id
+        elif self.env.context.get('type') == 'other_pay':
+            self.category_id = self.service.pay_categ_id.id
+        self.amount = self.service.price
+
+    @api.onchange('amount', 'tax_rate')
+    def onchange_tax_amount(self):
+        '''当订单行的金额、税率改变时，改变税额'''
+        self.tax_amount = self.amount * self.tax_rate * 0.01
+
     other_money_id = fields.Many2one('other.money.order',
-                                string=u'其他收支', ondelete='cascade')
+                                u'其他收支', ondelete='cascade')
+    service = fields.Many2one('service', u'服务', ondelete='restrict')
     category_id = fields.Many2one('core.category',
                         u'类别', ondelete='restrict',
                         domain="[('type', '=', context.get('type'))]")
     source_id = fields.Many2one('money.invoice',
-                                string=u'源单', ondelete='cascade')
-    amount = fields.Float(string=u'金额',
-                        digits_compute=dp.get_precision('Amount'))
-    note = fields.Char(string=u'备注')
+                                u'源单', ondelete='cascade')
+    auxiliary_id = fields.Many2one('auxiliary.financing',u'辅助核算')
+    amount = fields.Float(u'金额',
+                        digits=dp.get_precision('Amount'))
+    tax_rate = fields.Float(u'税率(%)',
+                            default=lambda self:self.env.user.company_id.import_tax_rate)
+    tax_amount = fields.Float(u'税额',
+                              digits=dp.get_precision('Amount'))
+    note = fields.Char(u'备注')

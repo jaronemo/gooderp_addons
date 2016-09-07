@@ -153,7 +153,7 @@ class TestWarehouseOrder(TransactionCase):
         self.assertEqual(self.others_in.origin, 'wh.in.others')
         self.assertEqual(self.others_out.origin, 'wh.out.others')
         self.assertEqual(self.internal.origin, 'wh.internal')
-        self.assertEqual(self.overage_in.origin, 'wh.in.overage')
+        self.assertEqual(self.overage_in.origin, 'wh.in.inventory')
 
     def test_create(self):
         temp_out = self.env['wh.out'].create({'name': '/', 'type': 'others'})
@@ -167,3 +167,42 @@ class TestWarehouseOrder(TransactionCase):
         self.assertEqual(temp_out.origin, 'wh.out.others')
         self.assertEqual(temp_in.origin, 'wh.in.others')
         self.assertEqual(temp_internal.origin, 'wh.internal')
+
+    def test_get_default_warehouse(self):
+        '''获取调出仓库'''
+        order = self.env['wh.out'].with_context({
+             'warehouse_type': 'stock'
+        }).create({'type': 'others',
+                   'line_out_ids': [(0, 0, {'goods_id': self.browse_ref('goods.mouse').id})]})
+        # 验证明细行上仓库是否是订单上调出仓库
+        hd_stock = self.browse_ref('warehouse.hd_stock')
+        order.warehouse_id = hd_stock
+        line = order.line_out_ids[0]
+        self.assertTrue(line.warehouse_id == hd_stock)
+        self.env['wh.out'].create({'type': 'others'})
+
+    def test_get_default_warehouse_dest(self):
+        '''获取调入仓库'''
+        order = self.env['wh.in'].with_context({
+             'warehouse_dest_type': 'stock'
+        }).create({'type': 'others',
+                   'line_in_ids': [(0, 0, {'goods_id': self.browse_ref('goods.mouse').id})]})
+        # 验证明细行上仓库是否是订单上调入仓库
+        hd_stock = self.browse_ref('warehouse.hd_stock')
+        order.warehouse_dest_id = hd_stock
+        line = order.line_in_ids[0]
+        self.assertTrue(line.warehouse_dest_id == hd_stock)
+        self.env['wh.in'].create({'type': 'others'})
+
+    def test_onchange_type(self):
+        '''当业务类别变化时，调入库位也发生变化'''
+        # 其它出库单
+        self.others_out.type = 'inventory'
+        warehouse_inventory = self.browse_ref('warehouse.warehouse_inventory')
+        self.others_out.onchange_type()
+        self.assertTrue(self.others_out.warehouse_dest_id == warehouse_inventory)
+
+        # 其它入库单
+        self.others_in_2.type = 'inventory'
+        self.others_in_2.onchange_type()
+        self.assertTrue(self.others_in_2.warehouse_id == warehouse_inventory)
